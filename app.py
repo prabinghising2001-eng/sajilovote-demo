@@ -137,6 +137,9 @@ def validate_phone_for_country(country, phone_raw):
 
 # --- 3. VISION, DOCUMENT FACE MATCH & PALM SCAN ENGINE ---
 def load_face_cascade():
+    if not hasattr(cv2, "CascadeClassifier"):
+        return None
+
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
         os.path.join(base_dir, HAARCASCADE_FILENAME),
@@ -155,7 +158,6 @@ def load_face_cascade():
             if not cascade.empty():
                 return cascade
 
-    # Cloud Fallback: download cascade XML once if local/system path is unavailable
     fallback_path = os.path.join("/tmp", HAARCASCADE_FILENAME)
     try:
         if not os.path.exists(fallback_path):
@@ -166,7 +168,7 @@ def load_face_cascade():
     except Exception:
         pass
 
-    return cv2.CascadeClassifier()
+    return None
 
 face_cascade = load_face_cascade()
 
@@ -175,7 +177,7 @@ def decode_image_bytes(image_bytes):
     return cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
 def extract_doc_face(image_bytes):
-    if face_cascade.empty():
+    if face_cascade is None or face_cascade.empty():
         return None, None, "Face detection मोडल लोड हुन सकेन। कृपया पृष्ठ रिफ्रेस गर्नुहोस्।"
 
     img = decode_image_bytes(image_bytes)
@@ -193,7 +195,7 @@ def extract_doc_face(image_bytes):
     return face_rgb, face_sig, "Success"
 
 def analyze_live_face_and_blue_ray(image_bytes):
-    if face_cascade.empty():
+    if face_cascade is None or face_cascade.empty():
         return False, None, None, {}, "Face detection मोडल लोड हुन सकेन। कृपया पृष्ठ रिफ्रेस गर्नुहोस्।"
 
     img = decode_image_bytes(image_bytes)
