@@ -6,12 +6,18 @@ import uuid
 import os
 import random
 import re
+import urllib.request
 import numpy as np
 import cv2
 
 # --- 1. PERSISTENT BLOCKCHAIN & FEEDBACK STORAGE ---
 BLOCKCHAIN_FILE = "blockchain_ledger.json"
 FEEDBACK_FILE = "feedback_log.json"
+HAARCASCADE_FILENAME = "haarcascade_frontalface_default.xml"
+HAARCASCADE_URL = (
+    "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/"
+    "haarcascade_frontalface_default.xml"
+)
 
 class VotingBlockchain:
     def __init__(self):
@@ -130,13 +136,48 @@ def validate_phone_for_country(country, phone_raw):
         return True, cleaned, f"{country} को अन्तर्राष्ट्रिय नम्बर मान्य छ।"
 
 # --- 3. VISION, DOCUMENT FACE MATCH & PALM SCAN ENGINE ---
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+def load_face_cascade():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base_dir, HAARCASCADE_FILENAME),
+        HAARCASCADE_FILENAME,
+    ]
+    if hasattr(cv2, "data") and hasattr(cv2.data, "haarcascades"):
+        candidates.append(os.path.join(cv2.data.haarcascades, HAARCASCADE_FILENAME))
+    candidates.extend([
+        f"/usr/share/opencv4/haarcascades/{HAARCASCADE_FILENAME}",
+        f"/usr/local/share/opencv4/haarcascades/{HAARCASCADE_FILENAME}",
+    ])
+
+    for path in candidates:
+        if path and os.path.exists(path):
+            cascade = cv2.CascadeClassifier(path)
+            if not cascade.empty():
+                return cascade
+
+    # Cloud Fallback: download cascade XML once if local/system path is unavailable
+    fallback_path = os.path.join("/tmp", HAARCASCADE_FILENAME)
+    try:
+        if not os.path.exists(fallback_path):
+            urllib.request.urlretrieve(HAARCASCADE_URL, fallback_path)
+        cascade = cv2.CascadeClassifier(fallback_path)
+        if not cascade.empty():
+            return cascade
+    except Exception:
+        pass
+
+    return cv2.CascadeClassifier()
+
+face_cascade = load_face_cascade()
 
 def decode_image_bytes(image_bytes):
     file_bytes = np.asarray(bytearray(image_bytes), dtype=np.uint8)
     return cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
 def extract_doc_face(image_bytes):
+    if face_cascade.empty():
+        return None, None, "Face detection मोडल लोड हुन सकेन। कृपया पृष्ठ रिफ्रेस गर्नुहोस्।"
+
     img = decode_image_bytes(image_bytes)
     if img is None:
         return None, None, "अपलोड गरिएको कागजातको छवि पढ्न सकिएन।"
@@ -152,6 +193,9 @@ def extract_doc_face(image_bytes):
     return face_rgb, face_sig, "Success"
 
 def analyze_live_face_and_blue_ray(image_bytes):
+    if face_cascade.empty():
+        return False, None, None, {}, "Face detection मोडल लोड हुन सकेन। कृपया पृष्ठ रिफ्रेस गर्नुहोस्।"
+
     img = decode_image_bytes(image_bytes)
     if img is None:
         return False, None, None, {}, "अमान्य क्यामेरा छवि (Invalid Image)"
